@@ -1,6 +1,5 @@
-package com.vikas.facegate.ui.theme
+package com.vikas.facegate.presentation.ui.theme
 
-import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme

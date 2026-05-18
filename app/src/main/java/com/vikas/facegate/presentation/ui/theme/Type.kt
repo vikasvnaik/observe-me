@@ -1,4 +1,4 @@
-package com.vikas.facegate.ui.theme
+package com.vikas.facegate.presentation.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
