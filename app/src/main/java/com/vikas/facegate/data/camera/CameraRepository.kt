@@ -23,53 +23,41 @@ class CameraRepository @Inject constructor(
     private val _sessionState = MutableStateFlow<SessionState>(SessionState.Closed)
     val sessionState: StateFlow<SessionState> = _sessionState.asStateFlow()
 
-    // Holds the active CameraDevice so we can close it cleanly
     private var cameraDevice: CameraDevice? = null
     private var captureSession: CameraCaptureSession? = null
     
-    // Store the surface to handle the race condition where the surface is ready 
-    // before the camera hardware is fully opened.
+    // We keep a reference to the surface so that if the camera is closed and 
+    // reopened (e.g. on pause/resume), we can automatically restart the 
+    // preview if the surface is still valid.
     private var previewSurface: Surface? = null
 
     private var cameraJob: Job? = null
     private var sessionJob: Job? = null
 
-    /**
-     * Opens the front camera and tracks its state.
-     */
     fun open(scope: CoroutineScope) {
-        // Cancel any existing open attempt first
         cameraJob?.cancel()
-
         cameraJob = scope.launch {
             val cameraId = cameraDeviceManager.getFrontCameraId()
             cameraDeviceManager.openCamera(cameraId).collect { state ->
                 _cameraState.value = state
-
-                // Track the device reference so we can close it
                 if (state is CameraState.Opened) {
                     cameraDevice = state.device
-                    // If startPreview was called while we were opening, 
-                    // we can now proceed to create the session.
+                    // Auto-start preview if we already have a valid surface
                     previewSurface?.let { surface ->
-                        startPreviewInternal(scope, surface)
+                        if (surface.isValid) {
+                            startPreviewInternal(scope, surface)
+                        }
                     }
                 }
             }
         }
     }
 
-    /**
-     * Starts a preview session on the given surface.
-     */
     fun startPreview(scope: CoroutineScope, surface: Surface) {
         previewSurface = surface
-        val device = cameraDevice
-        if (device != null) {
+        if (cameraDevice != null && surface.isValid) {
             startPreviewInternal(scope, surface)
         }
-        // If device is null, startPreviewInternal will be called automatically 
-        // once the camera state becomes Opened in the open() flow.
     }
 
     private fun startPreviewInternal(scope: CoroutineScope, surface: Surface) {
@@ -88,23 +76,25 @@ class CameraRepository @Inject constructor(
         }
     }
 
-    /**
-     * Stops the preview session and clears the surface, but keeps the 
-     * camera device open. This is useful for configuration changes.
-     */
     fun stopPreview() {
         sessionJob?.cancel()
         captureSession?.close()
         captureSession = null
-        previewSurface = null
         _sessionState.value = SessionState.Closed
+        // We DO NOT clear previewSurface here because it might still be valid 
+        // for the next camera session (e.g. after a resume).
     }
 
     /**
-     * Closes the camera hardware and resets state.
+     * Called when the UI surface is actually destroyed.
      */
-    fun close() {
+    fun releasePreviewSurface() {
         stopPreview()
+        previewSurface = null
+    }
+
+    fun close() {
+        stopPreview() // This keeps the surface ref but stops the session
         cameraJob?.cancel()
         cameraDevice?.close()
         cameraDevice = null

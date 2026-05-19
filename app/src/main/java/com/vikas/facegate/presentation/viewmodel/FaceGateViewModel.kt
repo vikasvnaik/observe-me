@@ -65,7 +65,11 @@ class FaceGateViewModel @Inject constructor(
     }
 
     fun stopPreview() {
-        cameraRepository.close()
+        cameraRepository.stopPreview()
+    }
+
+    fun onSurfaceDestroyed() {
+        cameraRepository.releasePreviewSurface()
     }
 
     fun closeCamera() = cameraRepository.close()

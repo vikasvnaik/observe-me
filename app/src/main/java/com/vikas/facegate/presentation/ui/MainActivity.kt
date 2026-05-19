@@ -21,6 +21,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
@@ -79,15 +80,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-
         viewModel.closeCamera()
     }
 }
 
 /**
- * Refactored MainContent to use State Hoisting.
- * The 'onRequestPermissions' callback allows the Activity to handle the permission logic,
- * which is necessary because 'permissionFlow' is an extension function of ComponentActivity.
+ * Main Content layout.
+ * Shows CameraPreview if granted, otherwise shows status/request UI.
+ * Avoids opaque Surface backgrounds in the Granted state to ensure 
+ * the CameraPreview (SurfaceView) is visible.
  */
 @Composable
 fun MainContent(
@@ -96,37 +97,43 @@ fun MainContent(
     viewModel: FaceGateViewModel?,
     onRequestPermissions: () -> Unit
 ) {
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            when (permissionState) {
-                is PermissionState.Granted -> {
-                    // Show camera preview full screen
-                    Box(modifier = Modifier.fillMaxSize()) {
-
-                        CameraPreview(
-                            modifier = Modifier.fillMaxSize(),
-                            onSurfaceReady = { holder ->
-                                viewModel?.startPreview(holder.surface)
-                            },
-                            onSurfaceDestroyed = {
-                                viewModel?.stopPreview()
-                            }
-                        )
-
-                        // Debug overlay — top of screen
-                        Text(
-                            text = log,
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(16.dp),
-                            color = androidx.compose.ui.graphics.Color.White,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+    // Root container: No opaque Surface here when permissions are granted
+    Box(modifier = Modifier.fillMaxSize()) {
+        when (permissionState) {
+            is PermissionState.Granted -> {
+                // 1. Camera Preview filling the background layer
+                CameraPreview(
+                    modifier = Modifier.fillMaxSize(),
+                    onSurfaceReady = { holder ->
+                        viewModel?.startPreview(holder.surface)
+                    },
+                    onSurfaceDestroyed = {
+                        // Notify VM that the surface is gone to release hardware
+                        viewModel?.onSurfaceDestroyed()
                     }
-                }
+                )
 
-                is PermissionState.Denied,
-                is PermissionState.Rationale -> {
+                // 2. UI Overlay (Debug Text) sits on top of the camera frames
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = 48.dp, start = 16.dp, end = 16.dp)
+                ) {
+                    Text(
+                        text = log,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+
+            is PermissionState.Denied,
+            is PermissionState.Rationale -> {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -134,19 +141,30 @@ fun MainContent(
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(log)
-                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            text = log,
+                            style = MaterialTheme.typography.bodyLarge,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(Modifier.height(24.dp))
                         Button(onClick = onRequestPermissions) {
                             Text("Grant Permissions")
                         }
                     }
                 }
+            }
 
-                else -> {
+            else -> {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
-                    ) { CircularProgressIndicator() }
+                    ) {
+                        CircularProgressIndicator()
+                    }
                 }
             }
         }
@@ -157,7 +175,6 @@ fun MainContent(
 @Composable
 fun MainPreview() {
     FaceGateTheme {
-        // Passing mock data for Preview
         MainContent(
             log = "Waiting for permissions...",
             permissionState = PermissionState.Rationale,
