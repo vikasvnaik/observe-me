@@ -65,6 +65,20 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        val state = viewModel.permissionState.value
+        if(state is PermissionState.Granted) {
+            viewModel.openCamera()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+
+        viewModel.closeCamera()
+    }
 }
 
 /**

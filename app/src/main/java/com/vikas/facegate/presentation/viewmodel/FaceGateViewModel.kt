@@ -1,16 +1,22 @@
 package com.vikas.facegate.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.vikas.facegate.data.camera.CameraRepository
+import com.vikas.facegate.data.camera.CameraState
 import com.vikas.facegate.domain.model.AccessDecision
 import com.vikas.facegate.domain.model.PermissionState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class FaceGateViewModel @Inject constructor(): ViewModel() {
+class FaceGateViewModel @Inject constructor(
+    private val cameraRepository: CameraRepository
+): ViewModel() {
 
     private val _accessDecision = MutableStateFlow<AccessDecision>(AccessDecision.Idle)
     val accessDecision: StateFlow<AccessDecision> = _accessDecision.asStateFlow()
@@ -20,15 +26,43 @@ class FaceGateViewModel @Inject constructor(): ViewModel() {
     private val _debugLog = MutableStateFlow("Waiting...")
     val debugLog: StateFlow<String> = _debugLog.asStateFlow()
 
+    val cameraState: StateFlow<CameraState> = cameraRepository.cameraState
+
     fun onPermissionState(state: PermissionState) {
         _permissionState.value = state
-        _debugLog.value = when(state) {
-            is PermissionState.Granted  -> "All permissions granted"
-            is PermissionState.Denied   -> "Denied: ${state.permissions.joinToString()}"
-            is PermissionState.Rationale -> "Please grant camera & BLE permissions"
+        when(state) {
+            is PermissionState.Granted  -> {
+                _debugLog.value = "All permissions granted"
+                openCamera()
+            }
+            is PermissionState.Denied   -> _debugLog.value = "Denied: ${state.permissions.joinToString()}"
+            is PermissionState.Rationale -> _debugLog.value = "Please grant camera & BLE permissions"
         }
     }
 
+    fun openCamera() {
+        cameraRepository.open(viewModelScope)
+
+        viewModelScope.launch {
+            cameraRepository.cameraState.collect { state ->
+                _debugLog.value = when(state) {
+                    is CameraState.Opening -> "Opening camera..."
+                    is CameraState.Opened  -> "Camera opened successfully"
+                    is CameraState.Error   -> "Camera error: ${state.message}"
+                    is CameraState.Disconnected -> "Camera disconnected"
+                    is CameraState.Closed -> "Camera closed"
+
+                }
+            }
+        }
+    }
+
+    fun closeCamera() = cameraRepository.close()
+
+    override fun onCleared() {
+        super.onCleared()
+        cameraRepository.close()
+    }
     fun log(msg: String) {
         _debugLog.value = msg
     }
