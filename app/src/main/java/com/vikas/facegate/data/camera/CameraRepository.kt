@@ -2,9 +2,12 @@ package com.vikas.facegate.data.camera
 
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
+import android.media.Image
+import android.util.Size
 import android.view.Surface
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,10 +15,15 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
+// Standard preview/analysis size — good balance of
+// performance vs accuracy for face detection
+private val ANALYSIS_SIZE = Size(640, 480)
+
 @Singleton
 class CameraRepository @Inject constructor(
     private val cameraDeviceManager: CameraDeviceManager,
-    private val cameraSessionManager: CameraSessionManager
+    private val cameraSessionManager: CameraSessionManager,
+    private val cameraFrameSource: CameraFrameSource
 ) {
     private val _cameraState = MutableStateFlow<CameraState>(CameraState.Closed)
     val cameraState: StateFlow<CameraState> = _cameraState.asStateFlow()
@@ -63,10 +71,14 @@ class CameraRepository @Inject constructor(
     private fun startPreviewInternal(scope: CoroutineScope, surface: Surface) {
         val device = cameraDevice ?: return
         sessionJob?.cancel()
+
+        // Get the ImageReader surface — second output target
+        val analysisSurface = cameraFrameSource.getImageReaderSurface(ANALYSIS_SIZE)
+
         sessionJob = scope.launch {
             cameraSessionManager.createSession(
                 device = device,
-                surfaces = listOf(surface)
+                surfaces = listOf(surface, analysisSurface)
             ).collect { state ->
                 _sessionState.value = state
                 if (state is SessionState.Ready) {
@@ -75,6 +87,12 @@ class CameraRepository @Inject constructor(
             }
         }
     }
+
+    /**
+     * The frame flow — collected by the face detector in Phase 3.
+     * Each Image MUST be closed by the collector after processing.
+     */
+    fun frameFlow(): Flow<Image> = cameraFrameSource.frameFlow()
 
     fun stopPreview() {
         sessionJob?.cancel()

@@ -9,6 +9,7 @@ import com.vikas.facegate.data.camera.SessionState
 import com.vikas.facegate.domain.model.AccessDecision
 import com.vikas.facegate.domain.model.PermissionState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +31,8 @@ class FaceGateViewModel @Inject constructor(
 
     val cameraState: StateFlow<CameraState> = cameraRepository.cameraState
     val sessionState: StateFlow<SessionState> = cameraRepository.sessionState
+
+    private var frameCountJob: Job? = null
 
     fun onPermissionState(state: PermissionState) {
         _permissionState.value = state
@@ -60,8 +63,29 @@ class FaceGateViewModel @Inject constructor(
         }
     }
 
+    fun startFrameCounter() {
+        frameCountJob?.cancel()
+        frameCountJob = viewModelScope.launch {
+            var count = 0
+            cameraRepository.frameFlow()
+                .collect { image ->
+                    count++
+                    // ALWAYS close the image — even in this test
+                    image.close()
+                    if (count % 30 == 0) { // log every 30 frames (~1 sec)
+                        _debugLog.value = "Frames received: $count (~${count/30} sec)"
+                    }
+                }
+        }
+    }
+
     fun startPreview(previewSurface: Surface) {
         cameraRepository.startPreview(viewModelScope, previewSurface)
+        // Small delay to let session configure before collecting frames
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(500)
+            startFrameCounter()
+        }
     }
 
     fun stopPreview() {

@@ -60,6 +60,11 @@ class CameraSessionManager @Inject constructor() {
                             CaptureRequest.CONTROL_MODE,
                             CameraMetadata.CONTROL_MODE_AUTO
                         )
+                        // Tell camera to optimise for face detection
+                        set(
+                            CaptureRequest.STATISTICS_FACE_DETECT_MODE,
+                            CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE
+                        )
                     }
 
                     // setRepeatingRequest sends this request to the
