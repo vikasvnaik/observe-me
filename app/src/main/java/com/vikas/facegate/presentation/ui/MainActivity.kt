@@ -5,12 +5,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -53,6 +55,7 @@ class MainActivity : ComponentActivity() {
                 MainContent(
                     log = log, 
                     permissionState = permissionState,
+                    viewModel = viewModel,
                     onRequestPermissions = {
                         // Launch permission flow from the Activity context
                         lifecycleScope.launch {
@@ -88,29 +91,62 @@ class MainActivity : ComponentActivity() {
  */
 @Composable
 fun MainContent(
-    log: String, 
+    log: String,
     permissionState: PermissionState?,
+    viewModel: FaceGateViewModel?,
     onRequestPermissions: () -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = log,
-                style = MaterialTheme.typography.bodyLarge
-            )
+        Surface(modifier = Modifier.fillMaxSize()) {
+            when (permissionState) {
+                is PermissionState.Granted -> {
+                    // Show camera preview full screen
+                    Box(modifier = Modifier.fillMaxSize()) {
 
-            Spacer(modifier = Modifier.height(16.dp))
+                        CameraPreview(
+                            modifier = Modifier.fillMaxSize(),
+                            onSurfaceReady = { holder ->
+                                viewModel?.startPreview(holder.surface)
+                            },
+                            onSurfaceDestroyed = {
+                                viewModel?.stopPreview()
+                            }
+                        )
 
-            if (permissionState is PermissionState.Denied ||
-                permissionState is PermissionState.Rationale) {
-                Button(onClick = onRequestPermissions) {
-                    Text(text = "Request Permissions")
+                        // Debug overlay — top of screen
+                        Text(
+                            text = log,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(16.dp),
+                            color = androidx.compose.ui.graphics.Color.White,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+
+                is PermissionState.Denied,
+                is PermissionState.Rationale -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(log)
+                        Spacer(Modifier.height(16.dp))
+                        Button(onClick = onRequestPermissions) {
+                            Text("Grant Permissions")
+                        }
+                    }
+                }
+
+                else -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) { CircularProgressIndicator() }
                 }
             }
         }
@@ -125,6 +161,7 @@ fun MainPreview() {
         MainContent(
             log = "Waiting for permissions...",
             permissionState = PermissionState.Rationale,
+            viewModel = null,
             onRequestPermissions = {}
         )
     }

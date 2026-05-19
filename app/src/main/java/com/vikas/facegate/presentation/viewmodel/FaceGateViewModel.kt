@@ -1,9 +1,11 @@
 package com.vikas.facegate.presentation.viewmodel
 
+import android.view.Surface
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vikas.facegate.data.camera.CameraRepository
 import com.vikas.facegate.data.camera.CameraState
+import com.vikas.facegate.data.camera.SessionState
 import com.vikas.facegate.domain.model.AccessDecision
 import com.vikas.facegate.domain.model.PermissionState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -27,6 +29,7 @@ class FaceGateViewModel @Inject constructor(
     val debugLog: StateFlow<String> = _debugLog.asStateFlow()
 
     val cameraState: StateFlow<CameraState> = cameraRepository.cameraState
+    val sessionState: StateFlow<SessionState> = cameraRepository.sessionState
 
     fun onPermissionState(state: PermissionState) {
         _permissionState.value = state
@@ -55,6 +58,14 @@ class FaceGateViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    fun startPreview(previewSurface: Surface) {
+        cameraRepository.startPreview(viewModelScope, previewSurface)
+    }
+
+    fun stopPreview() {
+        cameraRepository.close()
     }
 
     fun closeCamera() = cameraRepository.close()
