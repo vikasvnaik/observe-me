@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.vikas.facegate"
+    namespace = "com.vikas.observeme"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.vikas.facegate"
+        applicationId = "com.vikas.observeme"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

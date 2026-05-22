@@ -22,6 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "FaceGate"
+rootProject.name = "ObserveMe"
 include(":app")
  
