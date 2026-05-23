@@ -6,7 +6,8 @@ hilt = "2.51.1"
 coroutines = "1.8.1"
 lifecycle = "2.8.2"
 camera = "1.3.4"
-mlkit-face = "16.1.6"
+mlkit-labeling = "17.0.9"
+generativeai = "0.9.0"
 compose-bom = "2024.06.00"
 
 [libraries]
@@ -29,7 +30,10 @@ camerax-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref =
 camerax-view = { module = "androidx.camera:camera-view", version.ref = "camera" }
 
 # ML Kit
-mlkit-face = { module = "com.google.mlkit:face-detection", version = "16.1.6" }
+mlkit-labeling = { module = "com.google.mlkit:image-labeling", version.ref = "mlkit-labeling" }
+
+# Gemini
+generativeai = { module = "com.google.ai.client.generativeai:generativeai", version.ref = "generativeai" }
 
 # Compose
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }

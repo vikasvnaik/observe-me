@@ -1,9 +1,15 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
+}
+
+val localProps = Properties().also { props ->
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use(props::load)
 }
 
 android {
@@ -16,6 +22,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("String", "GEMINI_API_KEY", "\"${localProps.getProperty("GEMINI_API_KEY", "")}\"")
     }
 
     compileOptions {
@@ -23,7 +30,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 }
 
 dependencies {
@@ -45,8 +55,9 @@ dependencies {
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
 
-    // ML Kit
-    implementation(libs.mlkit.face)
+    // ML Kit + Gemini
+    implementation(libs.mlkit.labeling)
+    implementation(libs.generativeai)
 
     // Compose
     implementation(platform(libs.compose.bom))

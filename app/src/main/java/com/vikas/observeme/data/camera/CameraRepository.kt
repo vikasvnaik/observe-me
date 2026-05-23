@@ -2,7 +2,6 @@ package com.vikas.observeme.data.camera
 
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
-import android.media.Image
 import android.util.Size
 import android.view.Surface
 import kotlinx.coroutines.CoroutineScope
@@ -43,9 +42,17 @@ class CameraRepository @Inject constructor(
     private var sessionJob: Job? = null
 
     fun open(scope: CoroutineScope) {
-        cameraJob?.cancel()
+        // Prevent double-open: onCreate and onResume both call open().
+        // If the camera is already opening or open, a second call would
+        // cancel the first job, leave a zombie CameraDevice, and cause
+        // the next session creation to fail (→ Ready never emitted).
+        if (_cameraState.value !is CameraState.Closed) return
+        // Mark as opening synchronously so a second call on the same thread
+        // (e.g. onPermissionState + onResume) sees non-Closed and returns early.
+        _cameraState.value = CameraState.Opening
+
         cameraJob = scope.launch {
-            val cameraId = cameraDeviceManager.getFrontCameraId()
+            val cameraId = cameraDeviceManager.getBackCameraId()
             cameraDeviceManager.openCamera(cameraId).collect { state ->
                 _cameraState.value = state
                 if (state is CameraState.Opened) {
@@ -88,11 +95,7 @@ class CameraRepository @Inject constructor(
         }
     }
 
-    /**
-     * The frame flow — collected by the face detector in Phase 3.
-     * Each Image MUST be closed by the collector after processing.
-     */
-    fun frameFlow(): Flow<Image> = cameraFrameSource.frameFlow()
+    fun frameFlow(): Flow<CameraFrame> = cameraFrameSource.frameFlow()
 
     fun stopPreview() {
         sessionJob?.cancel()
