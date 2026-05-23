@@ -1,12 +1,11 @@
 package com.vikas.observeme.data.camera
 
 import android.graphics.ImageFormat
-import android.hardware.camera2.CameraCaptureSession
-import android.hardware.camera2.CameraDevice
-import android.hardware.camera2.CaptureRequest
-import android.hardware.camera2.CameraMetadata
 import android.media.Image
 import android.media.ImageReader
+import android.os.Handler
+import android.os.HandlerThread
+import android.util.Log
 import android.util.Size
 import android.view.Surface
 import kotlinx.coroutines.channels.awaitClose
@@ -15,77 +14,86 @@ import kotlinx.coroutines.flow.callbackFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
+data class CameraFrame(val nv21: ByteArray, val width: Int, val height: Int)
+
 @Singleton
 class CameraFrameSource @Inject constructor() {
 
-    // ImageReader sits between Camera2 and your code.
-    // It owns a fixed-size buffer queue of Image objects.
-    // maxImages = 2: double-buffering — one being processed,
-    // one ready next. More = more memory. Less = dropped frames.
     private var imageReader: ImageReader? = null
 
-    /**
-     * Returns the ImageReader's Surface — added as a second
-     * output target on the CaptureSession alongside the
-     * preview SurfaceView.
-     */
-    fun getImageReaderSurface(size: Size): Surface {
-        imageReader?.close() // close previous if any
+    // Dedicated background thread so NV21 extraction never blocks the main thread
+    private val callbackThread = HandlerThread("CameraFrameSource").also { it.start() }
+    private val callbackHandler = Handler(callbackThread.looper)
 
-        imageReader = ImageReader.newInstance(
-            size.width,
-            size.height,
-            ImageFormat.YUV_420_888, // standard format for ML processing
-            2                         // maxImages buffer count
-        )
+    fun getImageReaderSurface(size: Size): Surface {
+        imageReader?.close()
+        imageReader = ImageReader.newInstance(size.width, size.height, ImageFormat.YUV_420_888, 2)
+        Log.d("FrameSource", "ImageReader created ${size.width}x${size.height}")
         return imageReader!!.surface
     }
 
-    /**
-     * Emits one Image per camera frame via callbackFlow.
-     *
-     * CRITICAL: every Image emitted MUST be closed by the
-     * collector after use. If you forget image.close():
-     *  - buffer queue fills up (maxImages = 2)
-     *  - ImageReader stops delivering new frames
-     *  - preview freezes
-     *  - no error is thrown — silent failure
-     *
-     * This is one of the most common Camera2 bugs.
-     */
-    fun frameFlow(): Flow<Image> = callbackFlow {
-
+    fun frameFlow(): Flow<CameraFrame> = callbackFlow {
         val reader = imageReader
             ?: error("Call getImageReaderSurface() before frameFlow()")
 
+        Log.d("FrameSource", "frameFlow started — attaching listener")
+
         val listener = ImageReader.OnImageAvailableListener { imgReader ->
-            // acquireLatestImage: gets newest frame, discards older
-            // ones still in queue. Use this (not acquireNextImage)
-            // for face detection — you always want the freshest frame.
+            // Acquire, extract bytes, and close the Image immediately so the
+            // ImageReader buffer is freed before the next frame arrives.
             val image = imgReader.acquireLatestImage() ?: return@OnImageAvailableListener
-
-            // trySend is non-blocking — if collector is slow and
-            // channel is full, the frame is dropped (not queued).
-            // For real-time face detection this is correct behaviour.
-            val result = trySend(image)
-
-            // If send failed (collector busy), close immediately
-            // to release the buffer back to the queue
-            if (result.isFailure) {
+            try {
+                val frame = image.toCameraFrame()
+                val result = trySend(frame)
+                if (result.isFailure) {
+                    Log.w("FrameSource", "channel full — dropping frame")
+                }
+            } finally {
                 image.close()
             }
         }
 
-        // null handler = callback on camera's internal thread
-        // This is fine — trySend is thread-safe
-        reader.setOnImageAvailableListener(listener, null)
+        reader.setOnImageAvailableListener(listener, callbackHandler)
 
         awaitClose {
-            // Remove listener and close reader when flow is cancelled
-            // (ViewModel cleared, Activity destroyed)
-            reader.setOnImageAvailableListener(null, null)
-            imageReader?.close()
-            imageReader = null
+            Log.d("FrameSource", "frameFlow awaitClose — removing listener")
+            reader.setOnImageAvailableListener(null, callbackHandler)
+            if (imageReader === reader) {
+                reader.close()
+                imageReader = null
+            }
         }
+    }
+
+    // YUV_420_888 → NV21, handles row/pixel stride differences across devices.
+    private fun Image.toCameraFrame(): CameraFrame {
+        val yPlane = planes[0]
+        val uPlane = planes[1]
+        val vPlane = planes[2]
+
+        val yBuf = yPlane.buffer
+        val uBuf = uPlane.buffer
+        val vBuf = vPlane.buffer
+
+        val yRowStride = yPlane.rowStride
+        val uvRowStride = uPlane.rowStride
+        val uvPixelStride = uPlane.pixelStride
+
+        val nv21 = ByteArray(width * height * 3 / 2)
+        var pos = 0
+
+        for (row in 0 until height) {
+            for (col in 0 until width) {
+                nv21[pos++] = yBuf.get(row * yRowStride + col)
+            }
+        }
+        for (row in 0 until height / 2) {
+            for (col in 0 until width / 2) {
+                nv21[pos++] = vBuf.get(row * uvRowStride + col * uvPixelStride)
+                nv21[pos++] = uBuf.get(row * uvRowStride + col * uvPixelStride)
+            }
+        }
+
+        return CameraFrame(nv21, width, height)
     }
 }

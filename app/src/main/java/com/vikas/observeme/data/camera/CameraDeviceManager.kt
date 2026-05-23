@@ -28,15 +28,11 @@ class CameraDeviceManager @Inject constructor(
     private val cameraManager =
         context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
-    /**
-     * Returns the ID of the front-facing camera.
-     * Swiftlane uses front camera for face recognition.
-     */
-    fun getFrontCameraId(): String {
+    fun getBackCameraId(): String {
         return cameraManager.cameraIdList.first { id ->
             val chars = cameraManager.getCameraCharacteristics(id)
             chars.get(CameraCharacteristics.LENS_FACING) ==
-                    CameraCharacteristics.LENS_FACING_FRONT
+                    CameraCharacteristics.LENS_FACING_BACK
         }
     }
 
